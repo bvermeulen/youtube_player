@@ -388,7 +388,7 @@ class TkGuiPlayer:
                 self.pl_next()
                 count += 1
                 if count > len(self.playlist):
-                    self.autoplay = False
+                    if self.autoplay: self.toggle_autoplay()
                     return
 
             self.prev_song = self.current_song
