@@ -59,7 +59,7 @@ class YouTubePlayer:
 
         song_list = []
         for result in results:
-            if self.short_song_ and song_is_short(result['duration']):
+            if self.short_song_ and not song_is_short(result['duration']):
                 continue
 
             song_list.append({
