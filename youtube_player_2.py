@@ -6,6 +6,7 @@ import re
 import random
 import datetime
 import json
+from collections import deque
 from tkinter import (
     Tk, Menu, Frame, Label, Button, Scale, Entry, DISABLED, StringVar,
     filedialog
@@ -177,11 +178,11 @@ class TkGuiPlayer:
         self.pl_song_time_text = StringVar()
         self.pl_song_time_text.set(' / '.join([str(datetime.timedelta(0)),
             str(datetime.timedelta(0))]))
-        self.playlist = []
-        self.pl_index = 0
-        self.pl_not_played_index_set = set()
-        self.querylist = []
-        self.query_index = 0
+        self.playlist = deque()
+        self.playlist_rotations = 0
+        self.pl_not_played_set = set()
+        self.querylist = deque()
+        self.querylist_rotations = 0
         self.current_song = None
         self.prev_song = None
         self.quality_level = 1
@@ -218,6 +219,7 @@ class TkGuiPlayer:
         self.file_menu = Menu(self.window, tearoff=0)
         self.file_menu.add_command(label='open playlist', command=self.open_playlist)
         self.file_menu.add_command(label='save playlist', command=self.save_playlist)
+        self.file_menu.add_command(label='quit', command=self.quit)
 
     def set_quality_menu(self):
         self.quality_menu = Menu(self.window, tearoff=0)
@@ -246,8 +248,9 @@ class TkGuiPlayer:
     def open_playlist(self):
         filename = filedialog.askopenfilename(title='Open a file', filetypes=self.file_extensions)
         with open(filename, 'r') as jsonfile:
-            self.playlist = json.load(jsonfile)
-        self.pl_next()
+            self.playlist = deque(json.load(jsonfile))
+        self.pl_not_played_set = {v['url'] for v in self.playlist}
+        self.pl_show_title()
 
     def save_playlist(self):
         filename = filedialog.asksaveasfilename(filetypes=self.file_extensions,
@@ -279,14 +282,15 @@ class TkGuiPlayer:
         self.short_text.set('Y' if self.ytp.short_song else 'N')
 
     def toggle_shuffle(self):
-        self.shuffle = not self.shuffle
+        self.shuffle = not self.shufflequery_song_title
         self.shuffle_text.set('Y' if self.shuffle else 'N')
 
     def import_all_to_playlist(self):
         self.playlist += self.querylist
 
     def clear_playlist(self):
-        self.playlist = []
+        self.playlist = deque()
+        self.playlist_rotations = 0
         self.pl_show_title()
 
     def set_query_frame(self):
@@ -309,36 +313,33 @@ class TkGuiPlayer:
         Button(button_frame, text='Add', command=self.query_add_song).pack(side='left')
 
     def query_songs(self, _):
-        self.querylist = self.ytp.search(str(self.query_text_entry.get()))
+        self.querylist = deque(self.ytp.search(str(self.query_text_entry.get())))
         if self.querylist:
-            self.query_index = 0
-            self.query_song_title.set(self.querylist[self.query_index]['title'])
+            self.query_song_title.set(self.querylist[0]['title'])
 
     def query_prev(self):
         if self.querylist:
-            self.query_index = (
-                self.query_index - 1 if self.query_index > 0
-                else len(self.querylist) - 1
-            )
-            self.query_song_title.set(self.querylist[self.query_index]['title'])
+            # shift right (+1) moves the previous element into position
+            self.querylist.rotate(+1)
+            self.query_song_title.set(self.querylist[0]['title'])
 
     def query_next(self):
         if self.querylist:
-            self.query_index = (
-                self.query_index + 1 if self.query_index < len(self.querylist) - 1
-                else 0
-            )
-            self.query_song_title.set(self.querylist[self.query_index]['title'])
+            # shift left (-1) moves the next element into position
+            self.querylist.rotate(-1)
+            self.query_song_title.set(self.querylist[0]['title'])
 
     def query_play(self):
         if self.querylist:
-            self.play_song(self.querylist[self.query_index])
+            self.play_song(self.querylist[0])
 
     def query_add_song(self):
         if self.querylist:
-            self.playlist.append(self.querylist[self.query_index])
-            self.pl_not_played_index_set = {i for i in range(len(self.playlist))}
-            self.pl_index = 0
+            self.playlist.rotate(-self.playlist_rotations)
+            self.playlist.append(self.querylist[0])
+            self.pl_not_played_set.add(self.querylist[0]['url'])
+            self.playlist_rotations += 1 if self.playlist_rotations > 0 else 0
+            self.playlist.rotate(+self.playlist_rotations)
             self.pl_show_title()
 
     def set_pl_frame(self):
@@ -376,15 +377,16 @@ class TkGuiPlayer:
 
     def pl_play_prev(self):
         if self.prev_song:
+            previous_song = self.current_song
             self.play_song(self.prev_song)
+            self.prev_song = previous_song
 
     def pl_play_next(self):
         if self.playlist:
-
             # find a next short song, if any
             count = 0
             while (self.ytp.short_song
-                and not song_is_short(self.playlist[self.pl_index]['duration'])):
+                and not song_is_short(self.playlist[0]['duration'])):
                 self.pl_next()
                 count += 1
                 if count > len(self.playlist):
@@ -392,9 +394,11 @@ class TkGuiPlayer:
                     return
 
             self.prev_song = self.current_song
-            self.play_song(self.playlist[self.pl_index])
-            self.pl_not_played_index_set.discard(self.pl_index)
+            self.play_song(self.playlist[0])
+            if (url := self.playlist[0]['url']) in self.pl_not_played_set:
+                self.pl_not_played_set.remove(url)
             self.pl_next()
+            print(f'{self.pl_not_played_set=}')
 
     def pl_play_or_pause(self):
         self.pause = not self.pause
@@ -411,15 +415,14 @@ class TkGuiPlayer:
 
     def pl_song_forward(self):
         if (length := self.ytp.length) > 0:
-            self.ytp.time = (
-                self.ytp.time + self.skip_time
-                if self.ytp.time + self.skip_time < length else length
-            )
+            self.ytp.time = (self.ytp.time + self.skip_time
+                if self.ytp.time + self.skip_time < length else length)
 
     def pl_prev(self):
         if self.playlist:
+            # shift right (+1) moves the previous element into position
             if not self.shuffle:
-                self.pl_index = divmod(self.pl_index - 1, len(self.playlist))[1]
+                self.playlist_rotate(+1)
                 self.pl_show_title()
 
             else:
@@ -427,26 +430,32 @@ class TkGuiPlayer:
 
     def pl_next(self):
         if self.playlist:
+            if not self.pl_not_played_set:
+                self.pl_not_played_set = {v['url'] for v in self.playlist}
+
+            # shift left (-1) moves the next element into position
             if not self.shuffle:
-                self.pl_index = divmod(self.pl_index + 1, len(self.playlist))[1]
+                self.playlist_rotate(-1)
 
             else:
-                if not self.pl_not_played_index_set:
-                    self.pl_not_played_index_set = {i for i in range(len(self.playlist))}
-                self.pl_index = random.choice(list(self.pl_not_played_index_set))
+                url = random.choice(list(self.pl_not_played_set))
+                index = next((i for i, v in enumerate(self.playlist) if v['url'] == url), 0)
+                self.playlist_rotate(-index)
 
         self.pl_show_title()
 
     def pl_remove_song(self):
         if self.playlist:
-            del self.playlist[self.pl_index]
-            self.pl_not_played_index_set = {i for i in range(len(self.playlist))}
-            self.pl_index = self.pl_index - 1 if self.playlist else 0
+            if (url := self.playlist[0]['url']) in self.pl_not_played_set:
+                self.pl_not_played_set.remove(url)
+            del self.playlist[0]
+            self.playlist_rotations -= 1
+            self.playlist_rotate(1)
             self.pl_next()
 
     def pl_show_title(self):
         if self.playlist:
-            self.pl_next_title.set(self.playlist[self.pl_index]['title'])
+            self.pl_next_title.set(self.playlist[0]['title'])
 
         else:
             self.pl_next_title.set('')
@@ -515,6 +524,12 @@ class TkGuiPlayer:
         Label(status_frame, textvariable=self.auto_text, anchor='w', width=3).pack(side='left')
         Label(status_frame, text='Q:', anchor='w', width=2).pack(side='left')
         Label(status_frame, textvariable=self.quality_text, anchor='w', width=10).pack(side='left')
+
+    def playlist_rotate(self, val):
+        self.playlist.rotate(val)
+        self.playlist_rotations = (
+            (self.playlist_rotations + val) % len(self.playlist) if len(self.playlist) else 0
+        )
 
     def quit(self):
         self.window.after(500, self.window.destroy)
