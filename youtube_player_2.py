@@ -286,10 +286,17 @@ class TkGuiPlayer:
         self.shuffle_text.set('Y' if self.shuffle else 'N')
 
     def import_all_to_playlist(self):
-        self.playlist += self.querylist
+        if self.querylist:
+            self.playlist.rotate(-self.playlist_rotations)
+            self.playlist.extend(self.querylist)
+            self.pl_not_played_set |= {v['url'] for v in self.querylist}
+            self.playlist_rotations += len(self.querylist) if self.playlist_rotations > 0 else 0
+            self.playlist.rotate(+self.playlist_rotations)
+            self.pl_show_title()
 
     def clear_playlist(self):
         self.playlist = deque()
+        self.pl_not_played_set = set()
         self.playlist_rotations = 0
         self.pl_show_title()
 
@@ -469,6 +476,9 @@ class TkGuiPlayer:
     def select_stream(self, song_url):
         if song_url:
             audio_urls, _ = self.ytp.get_audio_urls(song_url)
+            if not audio_urls:
+                return False
+
             if (self.quality_level == 'max' or
                     self.quality_level + 1 > len(audio_urls)):
                 self.stream = audio_urls[-1]
@@ -479,8 +489,13 @@ class TkGuiPlayer:
                 quality_text = f'{self.quality_level}'
             self.quality_text.set(quality_text)
 
+            return True
+
     def play_song(self, song_dict):
-        self.select_stream(song_dict['url'])
+        valid = self.select_stream(song_dict['url'])
+        if not valid:
+            return
+            
         self.ytp.get_player(self.stream)
         self.ytp.play()
         self.current_song = song_dict
