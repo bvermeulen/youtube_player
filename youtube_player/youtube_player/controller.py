@@ -5,7 +5,7 @@ https://codereview.stackexchange.com/questions/282051/a-gui-youtube-audio-player
 import random
 import json
 from collections import deque
-from youtube_player_model import song_is_short
+from youtube_player.model import song_is_short
 
 
 class Controller:
