@@ -3,7 +3,7 @@ Gui YouTube player: based on question
 https://codereview.stackexchange.com/questions/282051/a-gui-youtube-audio-player/282130#282130
 '''
 import re
-from collections import deque
+import json
 from youtube_search import YoutubeSearch
 import vlc
 import yt_dlp
@@ -45,6 +45,7 @@ class YouTubePlayerModel:
         self.short_song_ = short_song
         self.vlc_instance = vlc.Instance()
         self.player = self.vlc_instance.media_player_new()
+        self.playlist_ = []
 
     def search(self, search_query):
         results = YoutubeSearch(
@@ -86,6 +87,33 @@ class YouTubePlayerModel:
 
     def pause(self, pause):
         self.player.set_pause(pause)
+
+    def open_playlist(self, filename):
+        self.playlst = []
+        with open(filename, 'r') as jsonfile:
+            self.playlist_ = json.load(jsonfile)
+
+    def save_playlist(self, filename):
+        with open(filename, 'w') as jsonfile:
+            json.dump(self.playlist_, jsonfile)
+
+    def clear_playlist(self):
+        self.playlist_ = []
+
+    def extend_playlist(self, playlist_to_add):
+        self.playlist_.extend(playlist_to_add)
+
+    def add_to_playlist(self, song_dict):
+        self.playlist_.append(song_dict)
+
+    def remove_from_playlist(self, index):
+        if index not in range(len(self.playlist_)):
+            return
+        del self.playlist_[index]
+
+    @property
+    def playlist(self):
+        return self.playlist_
 
     @property
     def short_song(self) -> bool:

@@ -3,7 +3,6 @@ Gui YouTube player: based on question
 https://codereview.stackexchange.com/questions/282051/a-gui-youtube-audio-player/282130#282130
 '''
 import random
-import json
 from collections import deque
 from youtube_player.model import song_is_short
 
@@ -15,11 +14,10 @@ class Controller:
     def __init__(self, model, view):
         self.model = model
         self.view = view
-        self.playlist = deque()
+        self.playlist = deque([])
+        self.querylst = deque([])
         self.playlist_rotations = 0
         self.pl_not_played_set = set()
-        self.querylist = deque()
-        self.querylist_rotations = 0
         self.current_song = None
         self.prev_song = None
         self.pause = False
@@ -34,14 +32,13 @@ class Controller:
         return self.quality_level, self.shuffle, self.model.short_song, self.autoplay, volume
 
     def open_playlist(self, filename):
-        with open(filename, 'r') as jsonfile:
-            self.playlist = deque(json.load(jsonfile))
+        self.model.open_playlist(filename)
+        self.playlist = deque(self.model.playlist)
         self.pl_not_played_set = {v['url'] for v in self.playlist}
         self.view.pl_show_title(self.playlist[0]['title'])
 
     def save_playlist(self, filename):
-        with open(filename, 'w') as jsonfile:
-            json.dump(self.playlist, jsonfile)
+        self.model.save_playlist(filename)
 
     def set_quality(self, val):
         match val:
@@ -73,15 +70,16 @@ class Controller:
 
     def import_all_to_playlist(self):
         if self.querylist:
-            self.playlist.rotate(-self.playlist_rotations)
-            self.playlist.extend(self.querylist)
+            self.model.extend_playlist(self.querylist)
+            self.playlist = deque(self.model.playlist)
             self.pl_not_played_set |= {v['url'] for v in self.querylist}
             self.playlist_rotations += len(self.querylist) if self.playlist_rotations > 0 else 0
             self.playlist.rotate(+self.playlist_rotations)
             self.pl_show_title()
 
     def clear_playlist(self):
-        self.playlist = deque()
+        self.model.clear_playlist()
+        self.playlist = deque(self.model.playlist)
         self.pl_not_played_set = set()
         self.playlist_rotations = 0
         self.view.pl_show_title('')
@@ -108,8 +106,8 @@ class Controller:
 
     def query_add_song(self):
         if self.querylist:
-            self.playlist.rotate(-self.playlist_rotations)
-            self.playlist.append(self.querylist[0])
+            self.model.add_to_playlist(self.querylist[0])
+            self.playlist = deque(self.model.playlist)
             self.pl_not_played_set.add(self.querylist[0]['url'])
             self.playlist_rotations += 1 if self.playlist_rotations > 0 else 0
             self.playlist.rotate(+self.playlist_rotations)
@@ -188,9 +186,15 @@ class Controller:
         if self.playlist:
             if (url := self.playlist[0]['url']) in self.pl_not_played_set:
                 self.pl_not_played_set.remove(url)
-            del self.playlist[0]
-            self.playlist_rotations -= 1
-            self.playlist_rotate(1)
+            index = (
+                len(self.playlist) - self.playlist_rotations
+                if self.playlist_rotations > 0 else 0
+            )
+            self.model.remove_from_playlist(index)
+            self.playlist = deque(self.model.playlist)
+            self.playlist_rotations -= 1 if self.playlist_rotations > 0 else 0
+            self.playlist.rotate(self.playlist_rotations)
+            self.pl_prev()
             self.pl_next()
 
     def pl_show_title(self):
