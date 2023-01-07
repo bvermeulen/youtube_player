@@ -15,7 +15,7 @@ class Controller:
         self.model = model
         self.view = view
         self.playlist = deque([])
-        self.querylst = deque([])
+        self.querylist = deque([])
         self.playlist_rotations = 0
         self.pl_not_played_set = set()
         self.current_song = None
@@ -130,7 +130,7 @@ class Controller:
                 self.pl_next()
                 count += 1
                 if count > len(self.playlist):
-                    if self.autoplay: self.toggle_autoplay()
+                    if self.autoplay: self.view.toggle_autoplay()
                     return
 
             self.prev_song = self.current_song
@@ -139,8 +139,6 @@ class Controller:
                 self.pl_not_played_set.remove(url)
             self.pl_next()
             print(f'remaining song not yet played: {len(self.pl_not_played_set)}')
-
-        return title, quality_text
 
     def pl_play_or_pause(self):
         self.pause = not self.pause
