@@ -63,7 +63,7 @@ class YouTubePlayer:
                 continue
 
             song_list.append({
-                'url': ''.join([YOUTUBE_BASE_URL, result['url_suffix']]),
+                'url': ''.join([YOUTUBE_BASE_URL, "/watch?v=", result['id']]),
                 'title': re.sub(NON_CHARS, '', result['title']),
                 'duration': result['duration']
             })
@@ -80,6 +80,8 @@ class YouTubePlayer:
             for format in info['formats']:
                 if format['resolution'] == 'audio only':
                     audio_urls.append(format['url'])
+
+        print(f"{audio_urls=}, {title=}")
         return audio_urls, title
 
     def get_player(self, url):

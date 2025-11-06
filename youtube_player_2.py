@@ -64,7 +64,7 @@ class YouTubePlayer:
                 continue
 
             song_list.append({
-                'url': ''.join([YOUTUBE_BASE_URL, result['url_suffix']]),
+                'url': ''.join([YOUTUBE_BASE_URL, "/watch?v=", result['id']]),
                 'title': re.sub(NON_CHARS, '', result['title']),
                 'duration': result['duration']
             })
